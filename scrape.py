@@ -84,6 +84,37 @@ def write_markdown(video_id, title, channel, transcript, upload_date="", output_
     return filepath
 
 
+def fetch_playlist_entries(url):
+    """Return (playlist_title, [{id, url, title}, ...]) without downloading transcripts."""
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": "in_playlist",
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        print(f"Error expanding playlist {url}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    title = info.get("title") or "Playlist"
+    entries = []
+    for entry in info.get("entries") or []:
+        if not entry:
+            continue
+        vid = entry.get("id")
+        if not vid or not re.match(r"^[a-zA-Z0-9_-]{11}$", vid):
+            continue
+        entries.append({
+            "id": vid,
+            "url": f"https://www.youtube.com/watch?v={vid}",
+            "title": entry.get("title") or "",
+        })
+    return title, entries
+
+
 def main(args=None):
     """Process YouTube URLs and save as Markdown files."""
     import json as json_module
@@ -92,8 +123,16 @@ def main(args=None):
         args = sys.argv[1:]
 
     if not args:
-        print("Usage: python scrape.py [--json] URL [URL ...]", file=sys.stderr)
+        print("Usage: python scrape.py [--json|--playlist-ids] URL [URL ...]", file=sys.stderr)
         sys.exit(1)
+
+    if args[0] == "--playlist-ids":
+        if len(args) != 2:
+            print("Usage: python scrape.py --playlist-ids URL", file=sys.stderr)
+            sys.exit(1)
+        title, entries = fetch_playlist_entries(args[1])
+        print(json_module.dumps({"title": title, "entries": entries}))
+        return
 
     json_output = False
     if args[0] == "--json":
@@ -101,7 +140,7 @@ def main(args=None):
         args = args[1:]
 
     if not args:
-        print("Usage: python scrape.py [--json] URL [URL ...]", file=sys.stderr)
+        print("Usage: python scrape.py [--json|--playlist-ids] URL [URL ...]", file=sys.stderr)
         sys.exit(1)
 
     for url in args:

@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import VideoGrid from "@/components/VideoGrid";
 import EmptyState from "@/components/EmptyState";
 import AddModal from "@/components/AddModal";
+import JobsPanel from "@/components/JobsPanel";
 import Link from "next/link";
 import { dotClass, tintClass } from "@/components/folderColor";
 import type { Category, VideoSummary } from "@/lib/folders";
@@ -112,6 +113,8 @@ export default function LibraryClient({
         onClose={() => setModalOpen(false)}
         onSuccess={() => router.refresh()}
       />
+
+      <JobsPanel onJobCompleted={() => router.refresh()} />
     </>
   );
 }

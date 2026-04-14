@@ -18,43 +18,52 @@ export default function AddModal({ open, onClose, onSuccess }: AddModalProps) {
 
   if (!open) return null;
 
+  const submitBatch = async (urls: string[]) => {
+    const res = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to enqueue");
+    return data;
+  };
+
+  const submitSingle = async (url: string) => {
+    const res = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to enqueue");
+    return data;
+  };
+
   const handleScrape = async () => {
     setError("");
     const urls = batchMode
       ? batchUrls.split("\n").map((u) => u.trim()).filter(Boolean)
-      : [singleUrl.trim()];
+      : [singleUrl.trim()].filter(Boolean);
 
-    if (urls.length === 0 || urls[0] === "") {
+    if (urls.length === 0) {
       setError("Please enter at least one URL.");
       return;
     }
 
     setLoading(true);
     try {
-      const res = await fetch("/api/scrape", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls }),
-      });
-      const data = await res.json();
-
-      if (!res.ok && !data.results) {
-        setError(data.error || "Scraping failed.");
-        return;
+      if (batchMode) {
+        await submitBatch(urls);
+      } else {
+        await submitSingle(urls[0]);
       }
-
-      const errors = data.results?.filter((r: { error?: string }) => r.error) || [];
-      if (errors.length > 0 && errors.length === urls.length) {
-        setError(errors[0].error);
-        return;
-      }
-
       setSingleUrl("");
       setBatchUrls("");
       onSuccess();
       onClose();
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -96,7 +105,7 @@ export default function AddModal({ open, onClose, onSuccess }: AddModalProps) {
         ) : (
           <input
             type="url"
-            placeholder="https://youtube.com/watch?v=..."
+            placeholder="Video or playlist URL (youtube.com/...?list=...)"
             value={singleUrl}
             onChange={(e) => setSingleUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !loading && handleScrape()}
@@ -106,6 +115,10 @@ export default function AddModal({ open, onClose, onSuccess }: AddModalProps) {
                        transition-colors duration-200"
           />
         )}
+
+        <p className="mt-2 text-xs text-zinc-500">
+          Playlists are expanded and scraped in the background. You can close this.
+        </p>
 
         {error && <ErrorInline message={error} />}
 
@@ -125,7 +138,7 @@ export default function AddModal({ open, onClose, onSuccess }: AddModalProps) {
                        hover:bg-zinc-200 active:scale-[0.98] transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Scraping..." : "Scrape"}
+            {loading ? "Enqueuing..." : "Add to queue"}
           </button>
         </div>
       </div>

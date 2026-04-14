@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:all": "concurrently --names \"web,worker\" --prefix-colors \"cyan,magenta\" \"npm:dev\" \"npm:worker\"",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "start:all": "concurrently --names \"web,worker\" --prefix-colors \"cyan,magenta\" \"npm:start\" \"npm:worker\"",
+    "lint": "eslint",
+    "worker": "tsx src/worker.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -22,9 +25,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

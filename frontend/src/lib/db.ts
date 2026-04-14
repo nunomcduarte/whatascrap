@@ -23,6 +23,35 @@ export function getDb(): Database.Database {
         name        TEXT PRIMARY KEY,
         created_at  TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS jobs (
+        id           TEXT PRIMARY KEY,
+        type         TEXT NOT NULL,
+        status       TEXT NOT NULL,
+        source_url   TEXT,
+        title        TEXT,
+        category     TEXT,
+        total        INTEGER NOT NULL DEFAULT 0,
+        completed    INTEGER NOT NULL DEFAULT 0,
+        failed       INTEGER NOT NULL DEFAULT 0,
+        error        TEXT,
+        created_at   TEXT NOT NULL,
+        started_at   TEXT,
+        finished_at  TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, created_at);
+      CREATE TABLE IF NOT EXISTS job_items (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id       TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        video_id     TEXT,
+        url          TEXT NOT NULL,
+        title        TEXT,
+        status       TEXT NOT NULL,
+        attempts     INTEGER NOT NULL DEFAULT 0,
+        error        TEXT,
+        updated_at   TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_job_items_job ON job_items(job_id, status);
+      CREATE INDEX IF NOT EXISTS idx_job_items_status ON job_items(status);
     `);
     const vcols = db.prepare(`PRAGMA table_info(videos)`).all() as { name: string }[];
     if (!vcols.some((c) => c.name === "category")) {

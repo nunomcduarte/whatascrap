@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
         transcript: data.transcript,
         scraped_at: new Date().toISOString(),
         url,
+        category: null,
       };
 
       insertVideo(video);

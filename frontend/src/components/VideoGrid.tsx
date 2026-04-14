@@ -1,19 +1,14 @@
 import VideoCard from "./VideoCard";
-
-interface VideoSummary {
-  id: string;
-  title: string;
-  channel: string;
-  upload_date: string | null;
-}
+import type { Category, VideoSummary } from "@/lib/folders";
 
 interface VideoGridProps {
   videos: VideoSummary[];
+  categories: Category[];
 }
 
-export default function VideoGrid({ videos }: VideoGridProps) {
+export default function VideoGrid({ videos, categories }: VideoGridProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {videos.map((video) => (
         <VideoCard
           key={video.id}
@@ -21,6 +16,9 @@ export default function VideoGrid({ videos }: VideoGridProps) {
           title={video.title}
           channel={video.channel}
           upload_date={video.upload_date}
+          scraped_at={video.scraped_at}
+          category={video.category}
+          categories={categories}
         />
       ))}
     </div>

@@ -1,21 +1,39 @@
 import { Suspense } from "react";
-import { listVideos, countVideos } from "@/lib/db";
+import {
+  listVideos,
+  countVideos,
+  listCategories,
+  countUncategorized,
+} from "@/lib/db";
 import LibraryClient from "./LibraryClient";
 
 interface PageProps {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    category?: string;
+    uncategorized?: string;
+  }>;
 }
 
 export default async function Home({ searchParams }: PageProps) {
-  const { q } = await searchParams;
-  const videos = listVideos(q);
+  const { q, category, uncategorized } = await searchParams;
+  const videos = listVideos({
+    query: q,
+    category,
+    uncategorized: uncategorized === "1",
+  });
   const total = countVideos();
+  const categories = listCategories();
+  const uncategorizedCount = countUncategorized();
 
   return (
-    <main className="max-w-[1400px] mx-auto px-6 py-4">
-      <Suspense>
-        <LibraryClient videos={videos} total={total} initialQuery={q || ""} />
-      </Suspense>
-    </main>
+    <Suspense>
+      <LibraryClient
+        videos={videos}
+        categories={categories}
+        total={total}
+        uncategorized={uncategorizedCount}
+      />
+    </Suspense>
   );
 }

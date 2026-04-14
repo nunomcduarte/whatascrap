@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scrape",
-  description: "YouTube transcript library",
+  title: "scrape — YouTube transcript library",
+  description: "Save, organize, and search YouTube transcripts.",
 };
 
 export default function RootLayout({

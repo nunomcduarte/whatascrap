@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   HouseSimple,
@@ -16,6 +16,7 @@ import {
   Palette,
   FolderPlus,
   Check,
+  ClockCounterClockwise,
 } from "@phosphor-icons/react";
 import { FOLDER_COLORS, type Category } from "@/lib/folders";
 import { dotClass } from "./folderColor";
@@ -26,6 +27,7 @@ interface SidebarProps {
   uncategorized: number;
   collapsed: boolean;
   onToggle: () => void;
+  activeJobs?: number;
 }
 
 interface TreeNode {
@@ -59,12 +61,15 @@ export default function Sidebar({
   total,
   uncategorized,
   collapsed,
+  activeJobs = 0,
 }: SidebarProps) {
   const router = useRouter();
   const sp = useSearchParams();
+  const pathname = usePathname();
+  const isHistory = pathname?.startsWith("/history") ?? false;
   const activeCategory = sp.get("category");
   const isUncategorized = sp.get("uncategorized") === "1";
-  const isAll = !activeCategory && !isUncategorized;
+  const isAll = !isHistory && !activeCategory && !isUncategorized;
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -122,6 +127,20 @@ export default function Sidebar({
           label="Uncategorized"
           count={uncategorized}
           collapsed={collapsed}
+        />
+        <SideLink
+          href="/history"
+          active={isHistory}
+          icon={
+            <ClockCounterClockwise
+              size={22}
+              weight={isHistory ? "fill" : "regular"}
+            />
+          }
+          label="History"
+          count={activeJobs}
+          collapsed={collapsed}
+          showZero={false}
         />
 
         <div className="my-3 border-t border-white/[0.06]" />
@@ -186,6 +205,7 @@ function SideLink({
   label,
   count,
   collapsed,
+  showZero = true,
 }: {
   href: string;
   active: boolean;
@@ -193,7 +213,9 @@ function SideLink({
   label: string;
   count: number;
   collapsed: boolean;
+  showZero?: boolean;
 }) {
+  const hideCount = !showZero && count === 0;
   return (
     <Link
       href={href}
@@ -210,7 +232,7 @@ function SideLink({
           {label}
         </span>
       )}
-      {!collapsed && (
+      {!collapsed && !hideCount && (
         <span className="text-[11px] font-mono text-zinc-500 tabular-nums">
           {count}
         </span>

@@ -18,6 +18,7 @@ interface LibraryClientProps {
   categories: Category[];
   total: number;
   uncategorized: number;
+  activeJobs: number;
 }
 
 export default function LibraryClient({
@@ -25,6 +26,7 @@ export default function LibraryClient({
   categories,
   total,
   uncategorized,
+  activeJobs,
 }: LibraryClientProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -57,6 +59,7 @@ export default function LibraryClient({
           categories={categories}
           total={total}
           uncategorized={uncategorized}
+          activeJobs={activeJobs}
           collapsed={collapsed}
           onToggle={() => setCollapsed((c) => !c)}
         />

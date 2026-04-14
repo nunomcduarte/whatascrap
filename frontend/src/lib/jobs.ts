@@ -98,6 +98,14 @@ export function getJobItems(jobId: string): JobItem[] {
     .all(jobId) as JobItem[];
 }
 
+export function countActiveJobs(): number {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running')")
+    .get() as { n: number };
+  return row.n;
+}
+
 export function listJobs(opts: { status?: JobStatus | "active" } = {}): Job[] {
   const db = getDb();
   if (opts.status === "active") {

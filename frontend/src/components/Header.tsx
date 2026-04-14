@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { List, MagnifyingGlass, Plus } from "@phosphor-icons/react";
 
@@ -13,23 +13,31 @@ interface HeaderProps {
 export default function Header({ onAddClick, onToggleSidebar }: HeaderProps) {
   const router = useRouter();
   const sp = useSearchParams();
+  const pathname = usePathname();
   const [value, setValue] = useState(sp.get("q") || "");
   const [focused, setFocused] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    const currentQ = sp.get("q") ?? "";
+    if (value === currentQ) return;
+
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      const params = new URLSearchParams(sp.toString());
-      if (value) params.set("q", value);
-      else params.delete("q");
-      const qs = params.toString();
-      router.push(qs ? `/?${qs}` : "/");
+      if (pathname === "/") {
+        const params = new URLSearchParams(sp.toString());
+        if (value) params.set("q", value);
+        else params.delete("q");
+        const qs = params.toString();
+        router.push(qs ? `/?${qs}` : "/");
+      } else if (value) {
+        router.push(`/?q=${encodeURIComponent(value)}`);
+      }
     }, 300);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [value, router, sp]);
+  }, [value, router, sp, pathname]);
 
   return (
     <header className="sticky top-0 z-40 h-14 bg-[#0f0f0f]/95 backdrop-blur-md border-b border-white/[0.06] flex items-center px-4 gap-4">

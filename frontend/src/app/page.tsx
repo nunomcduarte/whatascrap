@@ -5,6 +5,7 @@ import {
   listCategories,
   countUncategorized,
 } from "@/lib/db";
+import { countActiveJobs } from "@/lib/jobs";
 import LibraryClient from "./LibraryClient";
 
 interface PageProps {
@@ -25,6 +26,7 @@ export default async function Home({ searchParams }: PageProps) {
   const total = countVideos();
   const categories = listCategories();
   const uncategorizedCount = countUncategorized();
+  const activeJobs = countActiveJobs();
 
   return (
     <Suspense>
@@ -33,6 +35,7 @@ export default async function Home({ searchParams }: PageProps) {
         categories={categories}
         total={total}
         uncategorized={uncategorizedCount}
+        activeJobs={activeJobs}
       />
     </Suspense>
   );

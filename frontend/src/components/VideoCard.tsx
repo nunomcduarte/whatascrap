@@ -146,7 +146,10 @@ export default function VideoCard({
             {title}
           </h3>
           <p className="mt-1 text-[12px] text-[#aaaaaa] truncate">{channel}</p>
-          <p className="mt-0.5 text-[12px] text-[#aaaaaa] flex items-center gap-1.5">
+          <p
+            className="mt-0.5 text-[12px] text-[#aaaaaa] flex items-center gap-1.5"
+            suppressHydrationWarning
+          >
             <span>added {formatRelative(scraped_at)}</span>
             {upload_date && (
               <>

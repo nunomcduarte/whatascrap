@@ -84,7 +84,10 @@ export default function JobRow({ job }: { job: Job }) {
             )}
           </div>
 
-          <p className="mt-1 text-[11px] font-mono text-zinc-500 tabular-nums">
+          <p
+            className="mt-1 text-[11px] font-mono text-zinc-500 tabular-nums"
+            suppressHydrationWarning
+          >
             {formatRelative(job.created_at)}
             {duration && <> · {duration}</>}
             <> · </>

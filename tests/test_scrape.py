@@ -64,10 +64,38 @@ def test_fetch_transcript_returns_joined_text():
 
 def test_fetch_transcript_failure_exits():
     import pytest
-    with patch("scrape.YouTubeTranscriptApi.fetch") as mock_fetch:
+    with (
+        patch("scrape.YouTubeTranscriptApi.fetch") as mock_fetch,
+        patch("scrape._fetch_subs_via_ytdlp") as mock_ydlp,
+    ):
         mock_fetch.side_effect = Exception("No transcript available")
+        mock_ydlp.return_value = None
         with pytest.raises(SystemExit):
             fetch_transcript("dQw4w9WgXcQ")
+
+
+def test_fetch_transcript_falls_back_to_ytdlp():
+    with (
+        patch("scrape.YouTubeTranscriptApi.fetch") as mock_fetch,
+        patch("scrape._fetch_subs_via_ytdlp") as mock_ydlp,
+    ):
+        mock_fetch.side_effect = Exception("blocked")
+        mock_ydlp.return_value = "Fallback transcript text."
+        result = fetch_transcript("dQw4w9WgXcQ")
+    assert result == "Fallback transcript text."
+
+
+def test_fetch_transcript_skips_fallback_on_permanent_error():
+    import pytest
+    from youtube_transcript_api._errors import TranscriptsDisabled
+    with (
+        patch("scrape.YouTubeTranscriptApi.fetch") as mock_fetch,
+        patch("scrape._fetch_subs_via_ytdlp") as mock_ydlp,
+    ):
+        mock_fetch.side_effect = TranscriptsDisabled("dQw4w9WgXcQ")
+        with pytest.raises(SystemExit):
+            fetch_transcript("dQw4w9WgXcQ")
+        mock_ydlp.assert_not_called()
 
 
 import os

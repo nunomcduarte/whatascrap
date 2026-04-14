@@ -18,7 +18,8 @@ function fmtTs(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
+  // Pin locale so SSR and client output match (hydration).
+  return d.toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -269,7 +270,10 @@ function Meta({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
         {label}
       </div>
-      <div className="mt-0.5 text-zinc-200 font-mono tabular-nums text-[12px]">
+      <div
+        className="mt-0.5 text-zinc-200 font-mono tabular-nums text-[12px]"
+        suppressHydrationWarning
+      >
         {value}
       </div>
     </div>
@@ -323,6 +327,48 @@ function ItemGroup({
   );
 }
 
+function ErrorHint({ message }: { message: string }) {
+  const m = message.toLowerCase();
+  let kind: "blocked" | "no_captions" | "unavailable" | "age" | null = null;
+  if (/blocked|ipblocked|requestblocked|rate.?limit|too many requests/.test(m)) {
+    kind = "blocked";
+  } else if (/transcriptsdisabled|notranscriptfound|no_captions|no captions/.test(m)) {
+    kind = "no_captions";
+  } else if (/videounavailable|videounplayable|unavailable/.test(m)) {
+    kind = "unavailable";
+  } else if (/agerestricted|age_restricted/.test(m)) {
+    kind = "age";
+  }
+  if (!kind) return null;
+  const copy: Record<NonNullable<typeof kind>, { label: string; hint: string }> = {
+    blocked: {
+      label: "YouTube rate-limit",
+      hint: "YouTube throttled this IP. The worker will back off — retry later, or set YT_COOKIES_FROM_BROWSER.",
+    },
+    no_captions: {
+      label: "No captions available",
+      hint: "This video has no transcript — retrying won't help.",
+    },
+    unavailable: {
+      label: "Video unavailable",
+      hint: "The video is private, removed, or region-locked.",
+    },
+    age: {
+      label: "Age-restricted",
+      hint: "Needs browser cookies — set YT_COOKIES_FROM_BROWSER=chrome (or similar) and retry.",
+    },
+  };
+  const { label, hint } = copy[kind];
+  return (
+    <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 text-[11px]">
+      <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 bg-rose-500/15 text-rose-200 ring-1 ring-inset ring-rose-500/30 font-medium">
+        {label}
+      </span>
+      <span className="text-zinc-400">{hint}</span>
+    </div>
+  );
+}
+
 function ItemRow({ item }: { item: JobItem }) {
   const label = item.title || item.url;
   const ytUrl = item.video_id
@@ -355,9 +401,12 @@ function ItemRow({ item }: { item: JobItem }) {
             <span className="text-zinc-600">· attempts: {item.attempts}</span>
           </div>
           {item.status === "failed" && item.error && (
-            <pre className="mt-2 text-[11px] font-mono text-rose-200 bg-rose-500/5 border border-rose-500/20 rounded-md px-2 py-1.5 whitespace-pre-wrap break-words">
-              {item.error}
-            </pre>
+            <>
+              <ErrorHint message={item.error} />
+              <pre className="mt-2 text-[11px] font-mono text-rose-200 bg-rose-500/5 border border-rose-500/20 rounded-md px-2 py-1.5 whitespace-pre-wrap break-words">
+                {item.error}
+              </pre>
+            </>
           )}
         </div>
       </div>

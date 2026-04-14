@@ -13,12 +13,21 @@ import {
 import { scrapeVideo } from "./lib/scraper";
 import { insertVideo, getVideoById } from "./lib/db";
 
-const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY || 2);
+const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY || 1);
 const IDLE_POLL_MS = 1500;
+const MIN_DELAY_MS = Number(process.env.WORKER_MIN_DELAY_MS || 1500);
+const BLOCK_BACKOFF_START_MS = Number(process.env.WORKER_BLOCK_BACKOFF_MS || 60_000);
+const BLOCK_BACKOFF_CAP_MS = 5 * 60_000;
+const BLOCKED_RE = /blocked|rate.?limit|requestblocked|ipblocked|too many requests/i;
 
 let stopping = false;
 
-async function processItem(item: JobItem, jobCategory: string | null) {
+type ItemOutcome = "ok" | "failed" | "blocked";
+
+async function processItem(
+  item: JobItem,
+  jobCategory: string | null
+): Promise<ItemOutcome> {
   try {
     if (item.video_id) {
       const existing = getVideoById(item.video_id);
@@ -28,7 +37,7 @@ async function processItem(item: JobItem, jobCategory: string | null) {
           setVideoCategory(item.video_id, jobCategory);
         }
         markItemDone(item.id, item.video_id, existing.title);
-        return;
+        return "ok";
       }
     }
 
@@ -36,7 +45,7 @@ async function processItem(item: JobItem, jobCategory: string | null) {
     const videoId = item.video_id ?? extractIdFromUrl(item.url);
     if (!videoId) {
       markItemFailed(item.id, "Could not extract video ID");
-      return;
+      return "failed";
     }
 
     insertVideo({
@@ -51,9 +60,11 @@ async function processItem(item: JobItem, jobCategory: string | null) {
     });
 
     markItemDone(item.id, videoId, data.title);
+    return "ok";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     markItemFailed(item.id, msg);
+    return BLOCKED_RE.test(msg) ? "blocked" : "failed";
   }
 }
 
@@ -71,6 +82,7 @@ function extractIdFromUrl(url: string): string | null {
 }
 
 async function workerLoop(slot: number) {
+  let blockBackoff = BLOCK_BACKOFF_START_MS;
   while (!stopping) {
     const claim = claimNextItem();
     if (!claim) {
@@ -81,7 +93,18 @@ async function workerLoop(slot: number) {
     console.log(
       `[worker ${slot}] job ${job.id.slice(0, 8)} item ${item.id} ${item.url}`
     );
-    await processItem(item, job.category);
+    const outcome = await processItem(item, job.category);
+    if (outcome === "blocked") {
+      const wait = Math.min(blockBackoff, BLOCK_BACKOFF_CAP_MS);
+      console.warn(
+        `[worker ${slot}] block detected — backing off ${Math.round(wait / 1000)}s`
+      );
+      await sleep(wait);
+      blockBackoff = Math.min(blockBackoff * 2, BLOCK_BACKOFF_CAP_MS);
+    } else {
+      if (outcome === "ok") blockBackoff = BLOCK_BACKOFF_START_MS;
+      if (MIN_DELAY_MS > 0) await sleep(MIN_DELAY_MS);
+    }
   }
 }
 
@@ -95,7 +118,9 @@ async function main() {
     console.log(`[worker] reclaimed ${reclaimed} stuck item(s) from previous run`);
   }
 
-  console.log(`[worker] starting with concurrency=${CONCURRENCY}`);
+  console.log(
+    `[worker] starting with concurrency=${CONCURRENCY} min_delay=${MIN_DELAY_MS}ms block_backoff=${BLOCK_BACKOFF_START_MS}ms`
+  );
   const slots = Array.from({ length: CONCURRENCY }, (_, i) => workerLoop(i + 1));
 
   const shutdown = (sig: string) => {

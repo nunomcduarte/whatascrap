@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
@@ -8,6 +8,7 @@ import VideoGrid from "@/components/VideoGrid";
 import EmptyState from "@/components/EmptyState";
 import AddModal from "@/components/AddModal";
 import JobsPanel from "@/components/JobsPanel";
+import BulkActionBar from "@/components/BulkActionBar";
 import Link from "next/link";
 import { dotClass, tintClass } from "@/components/folderColor";
 import type { Category, VideoSummary } from "@/lib/folders";
@@ -103,7 +104,12 @@ export default function LibraryClient({
               }
             />
           ) : (
-            <VideoGrid videos={videos} categories={categories} />
+            <SelectableGrid
+              key={sp.toString()}
+              videos={videos}
+              categories={categories}
+              onRefresh={() => router.refresh()}
+            />
           )}
         </main>
       </div>
@@ -115,6 +121,72 @@ export default function LibraryClient({
       />
 
       <JobsPanel onJobCompleted={() => router.refresh()} />
+    </>
+  );
+}
+
+function SelectableGrid({
+  videos,
+  categories,
+  onRefresh,
+}: {
+  videos: VideoSummary[];
+  categories: Category[];
+  onRefresh: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const visibleIds = useMemo(() => videos.map((v) => v.id), [videos]);
+
+  const effectiveSelected = useMemo(() => {
+    if (selected.size === 0) return selected;
+    const visibleSet = new Set(visibleIds);
+    const next = new Set<string>();
+    for (const id of selected) {
+      if (visibleSet.has(id)) next.add(id);
+    }
+    return next.size === selected.size ? selected : next;
+  }, [selected, visibleIds]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelected(new Set(visibleIds));
+  }, [visibleIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set());
+  }, []);
+
+  const onAfterMutate = useCallback(() => {
+    setSelected(new Set());
+    onRefresh();
+  }, [onRefresh]);
+
+  return (
+    <>
+      {effectiveSelected.size > 0 && (
+        <BulkActionBar
+          selected={effectiveSelected}
+          categories={categories}
+          allVisibleIds={visibleIds}
+          onClear={clearSelection}
+          onSelectAll={selectAll}
+          onAfterMutate={onAfterMutate}
+        />
+      )}
+      <VideoGrid
+        videos={videos}
+        categories={categories}
+        selected={effectiveSelected}
+        onToggleSelect={toggleSelect}
+      />
     </>
   );
 }

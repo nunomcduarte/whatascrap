@@ -198,10 +198,10 @@ function SideLink({
     <Link
       href={href}
       title={collapsed ? label : undefined}
-      className={`group flex items-center gap-4 px-3 py-2 rounded-lg transition-colors ${
+      className={`group flex items-center gap-4 px-3 py-2 rounded-xl transition-all duration-150 ${
         active
-          ? "bg-[#272727] text-zinc-50"
-          : "text-zinc-200 hover:bg-white/[0.06]"
+          ? "bg-white/[0.10] text-zinc-50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]"
+          : "text-zinc-200 hover:bg-white/[0.06] hover:text-zinc-50"
       } ${collapsed ? "justify-center px-0" : ""}`}
     >
       <span className="shrink-0 text-zinc-200">{icon}</span>

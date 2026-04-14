@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVideoById } from "@/lib/db";
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/[\s]+/g, "-")
-    .replace(/-+/g, "-");
-}
+import { renderVideoMarkdown, videoFilename } from "@/lib/markdown";
 
 export async function GET(
   _request: NextRequest,
@@ -20,23 +12,10 @@ export async function GET(
     return NextResponse.json({ error: "Video not found" }, { status: 404 });
   }
 
-  const markdown = `# ${video.title}
-
-**Channel:** ${video.channel}
-**Upload Date:** ${video.upload_date || "Unknown"}
-**Scraped Date:** ${video.scraped_at.split("T")[0]}
-
-## Transcript
-
-${video.transcript}
-`;
-
-  const filename = `${slugify(video.channel)}-${slugify(video.title)}.md`;
-
-  return new NextResponse(markdown, {
+  return new NextResponse(renderVideoMarkdown(video), {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${videoFilename(video)}"`,
     },
   });
 }

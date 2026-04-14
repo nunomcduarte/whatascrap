@@ -152,6 +152,43 @@ export function setVideoCategory(id: string, category: string | null): boolean {
   return result.changes > 0;
 }
 
+export function setVideoCategoryMany(ids: string[], category: string | null): number {
+  if (ids.length === 0) return 0;
+  const db = getDb();
+  const stmt = db.prepare("UPDATE videos SET category = ? WHERE id = ?");
+  let changed = 0;
+  const tx = db.transaction((rows: string[]) => {
+    for (const id of rows) {
+      if (stmt.run(category, id).changes > 0) changed++;
+    }
+  });
+  tx(ids);
+  return changed;
+}
+
+export function deleteVideos(ids: string[]): number {
+  if (ids.length === 0) return 0;
+  const db = getDb();
+  const stmt = db.prepare("DELETE FROM videos WHERE id = ?");
+  let changed = 0;
+  const tx = db.transaction((rows: string[]) => {
+    for (const id of rows) {
+      if (stmt.run(id).changes > 0) changed++;
+    }
+  });
+  tx(ids);
+  return changed;
+}
+
+export function getVideosByIds(ids: string[]): Video[] {
+  if (ids.length === 0) return [];
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(",");
+  return db
+    .prepare(`SELECT * FROM videos WHERE id IN (${placeholders})`)
+    .all(...ids) as Video[];
+}
+
 export function listCategories(): Category[] {
   const db = getDb();
   const rows = db.prepare(`

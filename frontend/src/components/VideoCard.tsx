@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Category } from "@/lib/folders";
 import { dotClass, tintClass } from "./folderColor";
+import { flattenForMenu, getCategoryPath } from "@/lib/categoryTree";
 
 interface VideoCardProps {
   id: string;
@@ -21,6 +22,9 @@ interface VideoCardProps {
   scraped_at: string;
   category: string | null;
   categories: Category[];
+  selected: boolean;
+  anySelected: boolean;
+  onToggleSelect: (id: string) => void;
 }
 
 function formatRelative(iso: string): string {
@@ -50,6 +54,9 @@ export default function VideoCard({
   scraped_at,
   category,
   categories,
+  selected,
+  anySelected,
+  onToggleSelect,
 }: VideoCardProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -79,19 +86,31 @@ export default function VideoCard({
     router.refresh();
   };
 
+  const handleSelectClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleSelect(id);
+  };
+
   const thumb = `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 
   return (
     <div className="group flex flex-col gap-3">
       <Link href={`/video/${id}`} className="block">
-        <div className="relative aspect-video overflow-hidden rounded-xl bg-[#181818]">
+        <div
+          className={`relative aspect-video overflow-hidden rounded-xl bg-[#181818] transition-[box-shadow,transform] duration-200 ${
+            selected
+              ? "ring-2 ring-[#cc2121] shadow-[0_0_0_4px_rgba(204,33,33,0.15)]"
+              : "ring-1 ring-white/[0.04] group-hover:ring-white/[0.10]"
+          }`}
+        >
           {!imgFailed ? (
             <Image
               src={thumb}
               alt={title}
               fill
               sizes="(min-width:1280px) 22vw, (min-width:768px) 33vw, 100vw"
-              className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
               unoptimized
               onError={() => setImgFailed(true)}
             />
@@ -100,7 +119,21 @@ export default function VideoCard({
               <FolderSimple size={32} />
             </div>
           )}
-          <div className="absolute inset-0 ring-1 ring-inset ring-white/[0.04] rounded-xl pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+
+          <button
+            type="button"
+            onClick={handleSelectClick}
+            aria-label={selected ? "Deselect video" : "Select video"}
+            aria-pressed={selected}
+            className={`absolute top-2 left-2 z-10 h-6 w-6 rounded-md flex items-center justify-center transition-all duration-150 ${
+              selected
+                ? "bg-[#cc2121] border border-[#cc2121] text-white scale-100"
+                : "bg-black/50 border border-white/70 text-transparent hover:border-[#cc2121] hover:bg-black/70 hover:text-white/90 scale-95 group-hover:scale-100"
+            } ${selected || anySelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"} backdrop-blur-sm`}
+          >
+            <Check size={14} weight="bold" />
+          </button>
         </div>
       </Link>
 
@@ -109,7 +142,7 @@ export default function VideoCard({
           href={`/video/${id}`}
           className="flex-1 min-w-0"
         >
-          <h3 className="text-[14px] font-semibold text-zinc-50 leading-snug tracking-tight line-clamp-2">
+          <h3 className="text-[14px] font-semibold text-zinc-50 leading-snug tracking-tight line-clamp-2 transition-colors group-hover:text-white">
             {title}
           </h3>
           <p className="mt-1 text-[12px] text-[#aaaaaa] truncate">{channel}</p>
@@ -160,7 +193,7 @@ export default function VideoCard({
             <DotsThreeVertical size={18} weight="bold" />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg bg-[#282828] border border-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1.5">
+            <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-xl bg-[#282828] border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.7)] py-1.5 anim-fade-scale origin-top-right">
               <p className="px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
                 Move to folder
               </p>
@@ -210,43 +243,4 @@ export default function VideoCard({
       </div>
     </div>
   );
-}
-
-function getCategoryPath(name: string, cats: Category[]): Category[] {
-  const byName = new Map(cats.map((c) => [c.name, c]));
-  const path: Category[] = [];
-  const seen = new Set<string>();
-  let current: Category | undefined = byName.get(name);
-  while (current && !seen.has(current.name)) {
-    seen.add(current.name);
-    path.unshift(current);
-    current = current.parent ? byName.get(current.parent) : undefined;
-  }
-  return path;
-}
-
-function flattenForMenu(cats: Category[]): { cat: Category; depth: number }[] {
-  const byParent = new Map<string | null, Category[]>();
-  cats.forEach((c) => {
-    const key = c.parent ?? null;
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key)!.push(c);
-  });
-  const out: { cat: Category; depth: number }[] = [];
-  const walk = (parent: string | null, depth: number) => {
-    const children = byParent.get(parent) ?? [];
-    for (const c of children) {
-      out.push({ cat: c, depth });
-      walk(c.name, depth + 1);
-    }
-  };
-  walk(null, 0);
-  // Append orphans (parent that no longer exists) at root.
-  const known = new Set(cats.map((c) => c.name));
-  cats.forEach((c) => {
-    if (c.parent && !known.has(c.parent) && !out.find((o) => o.cat.name === c.name)) {
-      out.push({ cat: c, depth: 0 });
-    }
-  });
-  return out;
 }

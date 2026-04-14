@@ -42,9 +42,14 @@ export default function Header({ onAddClick, onToggleSidebar }: HeaderProps) {
           <List size={22} />
         </button>
         <Link href="/" className="flex items-center gap-2 group">
-          <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#cc2121]">
-            <span className="absolute inset-0 rounded-md bg-[#cc2121] blur-md opacity-30" />
-            <span className="relative h-2 w-2 rounded-sm bg-zinc-50" />
+          <span
+            className="relative inline-flex h-[22px] w-[30px] items-center justify-center rounded-[6px] bg-[#cc2121] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_8px_rgba(204,33,33,0.35)] transition-transform group-hover:scale-[1.04]"
+          >
+            <span className="absolute inset-0 rounded-[6px] bg-[#cc2121] blur-md opacity-25" />
+            <span
+              className="relative border-y-[4px] border-l-[6px] border-y-transparent border-l-white"
+              style={{ marginLeft: 1 }}
+            />
           </span>
           <span className="text-[17px] font-semibold tracking-tight text-zinc-50">
             scrape
@@ -54,13 +59,17 @@ export default function Header({ onAddClick, onToggleSidebar }: HeaderProps) {
 
       <div className="flex-1 max-w-2xl mx-auto">
         <div
-          className={`flex items-center h-10 rounded-full border transition-colors ${
+          className={`flex items-center h-10 rounded-full border transition-all ${
             focused
-              ? "border-white/20 bg-[#121212]"
-              : "border-white/[0.08] bg-[#121212]"
+              ? "border-white/25 bg-[#121212] shadow-[inset_0_1px_2px_rgba(0,0,0,0.6),0_0_0_3px_rgba(59,130,246,0.15)]"
+              : "border-white/[0.08] bg-[#121212] shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]"
           }`}
         >
-          <div className="pl-4 pr-2 text-zinc-500">
+          <div
+            className={`pl-4 pr-2 transition-colors ${
+              focused ? "text-zinc-200" : "text-zinc-500"
+            }`}
+          >
             <MagnifyingGlass size={16} />
           </div>
           <input
@@ -78,7 +87,7 @@ export default function Header({ onAddClick, onToggleSidebar }: HeaderProps) {
       <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={onAddClick}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-[#272727] hover:bg-[#3a3a3a] text-zinc-50 text-sm font-medium tracking-tight transition active:scale-[0.97]"
+          className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#cc2121] hover:bg-[#e22828] text-white text-sm font-medium tracking-tight transition-all active:scale-[0.97] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_4px_14px_rgba(204,33,33,0.35)]"
         >
           <Plus size={16} weight="bold" />
           <span className="hidden sm:inline">Add video</span>

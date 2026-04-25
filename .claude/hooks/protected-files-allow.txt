@@ -1,0 +1,5 @@
+# Files Claude is permitted to write despite block-protected-files.sh.
+# One glob pattern per line; lines starting with # are comments.
+# Patterns match the absolute file path the tool was asked to write.
+
+*/frontend/.env.local

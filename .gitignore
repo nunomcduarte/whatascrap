@@ -7,3 +7,36 @@ __pycache__/
 *.db-shm
 *.db-wal
 .DS_Store
+.playwright-mcp/
+
+# Skills installer (`npx skills add`) creates stub dirs for every supported
+# agent tool. We use Claude Code only — skills land in .claude/skills/ and
+# are sourced from .agents/skills/ (canonical content). The rest is noise.
+/.adal/
+/.augment/
+/.bob/
+/.codebuddy/
+/.commandcode/
+/.continue/
+/.cortex/
+/.crush/
+/.factory/
+/.goose/
+/.iflow/
+/.junie/
+/.kilocode/
+/.kiro/
+/.kode/
+/.mcpjam/
+/.mux/
+/.neovate/
+/.openhands/
+/.pi/
+/.pochi/
+/.qoder/
+/.qwen/
+/.roo/
+/.trae/
+/.vibe/
+/.windsurf/
+/.zencoder/

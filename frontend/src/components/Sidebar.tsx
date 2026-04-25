@@ -416,7 +416,7 @@ function FolderTreeNode({
   };
 
   const href = `/?category=${encodeURIComponent(node.cat.name)}`;
-  const indent = collapsed ? 0 : depth * 12;
+  const indent = collapsed ? 0 : depth * 20;
 
   return (
     <div className="flex flex-col">
@@ -446,7 +446,7 @@ function FolderTreeNode({
             <button
               onClick={() => setOpen((o) => !o)}
               aria-label={open ? "Collapse" : "Expand"}
-              className="px-1.5 text-zinc-400 hover:text-zinc-100 transition"
+              className="shrink-0 px-1.5 text-zinc-400 hover:text-zinc-100 transition"
             >
               <CaretRight
                 size={12}
@@ -455,7 +455,7 @@ function FolderTreeNode({
               />
             </button>
           ) : (
-            !collapsed && <span className="w-[22px]" aria-hidden="true" />
+            !collapsed && <span className="shrink-0 w-[22px]" aria-hidden="true" />
           )}
 
           <Link

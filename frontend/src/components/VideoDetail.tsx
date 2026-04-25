@@ -1,5 +1,6 @@
 import DownloadButton from "./DownloadButton";
 import DeleteButton from "./DeleteButton";
+import CopyTranscriptButton from "./CopyTranscriptButton";
 
 interface VideoDetailProps {
   id: string;
@@ -39,6 +40,7 @@ export default function VideoDetail({
         </div>
         <div className="flex items-center gap-3 mt-5">
           <DownloadButton videoId={id} />
+          <CopyTranscriptButton transcript={transcript} />
           <DeleteButton videoId={id} />
         </div>
       </header>

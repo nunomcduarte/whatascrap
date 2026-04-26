@@ -129,17 +129,30 @@
       TRANSCRIPT_ENDPOINT_PATTERNS.some((p) => url.includes(p)) &&
       pendingFetchResolve
     ) {
+      DIAG.log("MATCHED FETCH URL:", url);
       res
         .clone()
         .json()
         .then((j) => {
           const segs = findInitialSegments(j);
+          DIAG.log("MATCHED FETCH walker result count:", segs?.length ?? null);
+          DIAG.log(
+            "MATCHED FETCH body top-level keys:",
+            j && typeof j === "object" ? Object.keys(j) : typeof j,
+          );
+          // Truncated body so the paste back is bounded.
+          DIAG.log(
+            "MATCHED FETCH body slice (first 4000 chars):",
+            JSON.stringify(j).slice(0, 4000),
+          );
           if (segs && pendingFetchResolve) {
             pendingFetchResolve({ source: "fetch", segments: segs });
             pendingFetchResolve = null;
           }
         })
-        .catch(() => {});
+        .catch((e) => {
+          DIAG.log("MATCHED FETCH parse error:", e?.message);
+        });
     }
     return res;
   };

@@ -16,6 +16,49 @@
   window.__whatascrapInstalled = true;
   console.log("[whatascrap page-world] installed");
 
+  // 2026-04 capture-bug instrumentation. Removed in Task 5.
+  const DIAG = (() => {
+    const log = (...args) => {
+      const printable = args.map((a) =>
+        a !== null && typeof a === "object" ? JSON.stringify(a) : a,
+      );
+      console.log("[whatascrap diag]", ...printable);
+    };
+    const snapshotPanels = () => {
+      const panels = document.querySelectorAll("[target-id]");
+      return Array.from(panels).map((p) => ({
+        targetId: p.getAttribute("target-id"),
+        visibility: p.getAttribute("visibility"),
+        innerTextLen: (p.innerText || "").length,
+        firstChildTags: Array.from(p.querySelectorAll(":scope *"))
+          .slice(0, 12)
+          .map((e) => e.tagName.toLowerCase()),
+      }));
+    };
+    const snapshotSegs = () => {
+      const candidates = [
+        "ytd-transcript-segment-renderer",
+        "ytd-transcript-segment-list-renderer",
+        "ytd-transcript-body-renderer",
+        "ytd-transcript-renderer",
+        "ytd-transcript-search-panel-renderer",
+        '[class*="transcript-segment"]',
+        '[class*="segment-text"]',
+        "[data-start-ms]",
+      ];
+      const out = {};
+      for (const sel of candidates) {
+        try {
+          out[sel] = document.querySelectorAll(sel).length;
+        } catch {
+          out[sel] = "selector-error";
+        }
+      }
+      return out;
+    };
+    return { log, snapshotPanels, snapshotSegs };
+  })();
+
   // ---------- Path A: fetch interception ----------
   let pendingFetchResolve = null;
   const origFetch = window.fetch;
@@ -156,28 +199,44 @@
   window.addEventListener("message", async (event) => {
     if (event.source !== window) return;
     if (event.data?.type !== "WHATASCRAP_CAPTURE") return;
-    console.log("[whatascrap page-world] CAPTURE message received");
+    DIAG.log("=== CAPTURE START ===");
+    DIAG.log("locale:", document.documentElement.lang);
+    DIAG.log("url:", location.href);
+    DIAG.log("panels(t=0):", DIAG.snapshotPanels());
+    DIAG.log("segs(t=0):", DIAG.snapshotSegs());
 
     const reply = (payload) =>
       window.postMessage({ type: "WHATASCRAP_TRANSCRIPT", payload }, "*");
 
     const ipr = window.ytInitialPlayerResponse;
     if (!ipr?.videoDetails) {
+      DIAG.log("FAIL: no ytInitialPlayerResponse.videoDetails");
       reply({ error: "No video metadata found on this page." });
       return;
     }
+    DIAG.log("ipr.videoDetails.videoId:", ipr.videoDetails.videoId);
+    DIAG.log(
+      "url videoId match:",
+      new URL(location.href).searchParams.get("v") === ipr.videoDetails.videoId,
+    );
 
     const { videoId, title, author, lengthSeconds, thumbnail } = ipr.videoDetails;
 
-    // Quick check: can we already see segments in the DOM? (User opened the
-    // panel manually before clicking Save.)
     const immediateDom = scrapeDomSegments();
+    DIAG.log("immediateDom segments:", immediateDom?.length ?? 0);
     let result = immediateDom
       ? { source: "dom", segments: immediateDom }
       : null;
 
     if (!result) {
-      // Race the two capture paths.
+      const fetchUrls = [];
+      const origFetchInner = window.fetch;
+      window.fetch = function (...args) {
+        const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
+        if (url) fetchUrls.push(url);
+        return origFetchInner.apply(this, args);
+      };
+
       const fetchPromise = new Promise((resolve) => {
         pendingFetchResolve = resolve;
         setTimeout(() => {
@@ -187,7 +246,15 @@
           }
         }, 8000);
       });
+
+      const trigger = findTranscriptTrigger();
+      DIAG.log("trigger found:", !!trigger);
+      DIAG.log("trigger outerHTML:", trigger?.outerHTML?.slice(0, 300));
+      DIAG.log("trigger ariaLabel:", trigger?.getAttribute("aria-label"));
+      DIAG.log("trigger parent tag:", trigger?.parentElement?.tagName);
+
       const clicked = clickToOpenPanel();
+      DIAG.log("clicked:", clicked);
       if (!clicked) {
         reply({
           error:
@@ -195,11 +262,31 @@
         });
         return;
       }
+
+      // Snapshot DOM evolution at fixed offsets after click.
+      const snapAt = async (ms, prevMs) => {
+        await new Promise((r) => setTimeout(r, ms - prevMs));
+        DIAG.log(`panels(t=${ms}ms):`, DIAG.snapshotPanels());
+        DIAG.log(`segs(t=${ms}ms):`, DIAG.snapshotSegs());
+      };
+      await snapAt(250, 0);
+      await snapAt(1000, 250);
+      await snapAt(3000, 1000);
+
       const domPromise = pollDomForSegments(8000);
       result = await Promise.race([fetchPromise, domPromise]);
-      // Clear any pending fetch resolver to avoid leaks
       pendingFetchResolve = null;
+
+      // Final snapshot fires whenever the race resolves (3–8s window).
+      DIAG.log("panels(post-race):", DIAG.snapshotPanels());
+      DIAG.log("segs(post-race):", DIAG.snapshotSegs());
+      DIAG.log("fetch URLs hit during capture:", fetchUrls);
+      window.fetch = origFetchInner;
     }
+
+    DIAG.log("final result.source:", result?.source);
+    DIAG.log("final result.segments.length:", result?.segments?.length);
+    DIAG.log("=== CAPTURE END ===");
 
     if (!result) {
       reply({

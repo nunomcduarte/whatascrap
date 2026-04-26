@@ -59,18 +59,83 @@
     return { log, snapshotPanels, snapshotSegs };
   })();
 
+  // ---------- Multi-name lookup tables (2026-04 hardening) ----------
+  // YouTube renames internal element ids and tag names periodically.
+  // Each table lists candidates ordered legacy → newest. Multi-name
+  // lookup is what survives renames; specific names are the fillings.
+
+  const TRANSCRIPT_PANEL_TARGET_IDS = [
+    "engagement-panel-searchable-transcript",
+    "PAmodern_transcript_view", // 2026-04-26: new modern UI panel (pt-BR Chrome 147)
+  ];
+
+  function findTranscriptPanel() {
+    for (const id of TRANSCRIPT_PANEL_TARGET_IDS) {
+      const p = document.querySelector(`[target-id="${id}"]`);
+      if (p) return p;
+    }
+    return null;
+  }
+
+  function isPanelExpanded(p) {
+    return (
+      p?.getAttribute("visibility") ===
+      "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED"
+    );
+  }
+
   // ---------- Path A: fetch interception ----------
+  // Multi-pattern matcher because YouTube migrated transcript loading
+  // from `/youtubei/v1/get_transcript` to `/youtubei/v1/get_panel` (which
+  // is multiplexed across panel types — chapters, comments, transcript).
+  // We accept any URL matching the pattern list, then filter by response
+  // shape: only resolve if the parsed JSON contains a transcript-shaped
+  // initialSegments array.
+
+  const TRANSCRIPT_ENDPOINT_PATTERNS = [
+    "/youtubei/v1/get_transcript",
+    "/youtubei/v1/get_panel", // 2026-04-26: new multiplexed endpoint
+  ];
+
+  function findInitialSegments(obj) {
+    if (!obj || typeof obj !== "object") return null;
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        const found = findInitialSegments(item);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (
+      Array.isArray(obj.initialSegments) &&
+      obj.initialSegments.some((s) => s?.transcriptSegmentRenderer)
+    ) {
+      return obj.initialSegments;
+    }
+    for (const key of Object.keys(obj)) {
+      const found = findInitialSegments(obj[key]);
+      if (found) return found;
+    }
+    return null;
+  }
+
   let pendingFetchResolve = null;
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
     const res = await origFetch.apply(this, args);
     const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
-    if (url?.includes("/youtubei/v1/get_transcript") && pendingFetchResolve) {
-      res.clone()
+    if (
+      url &&
+      TRANSCRIPT_ENDPOINT_PATTERNS.some((p) => url.includes(p)) &&
+      pendingFetchResolve
+    ) {
+      res
+        .clone()
         .json()
         .then((j) => {
-          if (pendingFetchResolve) {
-            pendingFetchResolve({ source: "fetch", json: j });
+          const segs = findInitialSegments(j);
+          if (segs && pendingFetchResolve) {
+            pendingFetchResolve({ source: "fetch", segments: segs });
             pendingFetchResolve = null;
           }
         })
@@ -80,20 +145,39 @@
   };
 
   // ---------- Path B: DOM scrape ----------
+  const SEGMENT_SELECTORS = [
+    "ytd-transcript-segment-renderer",
+    // 2026-04-26 probe: no new tag observed (panel never populates in new UI)
+    // — but the multi-name structure stays so future renames are 1-line adds.
+  ];
+
   function scrapeDomSegments() {
-    const segs = document.querySelectorAll("ytd-transcript-segment-renderer");
-    if (!segs.length) return null;
+    let segs = null;
+    for (const sel of SEGMENT_SELECTORS) {
+      const found = document.querySelectorAll(sel);
+      if (found.length) {
+        segs = found;
+        break;
+      }
+    }
+    if (!segs?.length) return null;
     const out = [];
     for (const el of segs) {
-      const tsEl = el.querySelector(".segment-timestamp");
-      const textEl = el.querySelector(
-        ".segment-text, yt-formatted-string.segment-text",
+      const tsEl = el.querySelector(
+        '.segment-timestamp, [class*="timestamp"]',
       );
-      const startMs = parseInt(el.getAttribute("data-start-ms") ?? "", 10);
-      const text = (textEl?.textContent || "").trim();
+      const textEl = el.querySelector(
+        '.segment-text, yt-formatted-string.segment-text, [class*="segment-text"]',
+      );
+      const startMsAttr =
+        el.getAttribute("data-start-ms") ?? el.getAttribute("data-start");
+      const startMs = parseInt(startMsAttr ?? "", 10);
+      const text = (textEl?.textContent || el.textContent || "").trim();
       if (!text) continue;
       out.push({
-        startMs: Number.isFinite(startMs) ? startMs : tsToMs(tsEl?.textContent),
+        startMs: Number.isFinite(startMs)
+          ? startMs
+          : tsToMs(tsEl?.textContent),
         endMs: 0,
         text,
       });
@@ -140,22 +224,54 @@
     return sec.querySelector("button") ?? null;
   }
 
-  function clickToOpenPanel() {
+  async function clickToOpenPanelAndVerify() {
     const btn = findTranscriptTrigger();
     if (!btn) return false;
-    const panel = document.querySelector(
-      '[target-id="engagement-panel-searchable-transcript"]',
-    );
-    const isOpen =
-      panel?.getAttribute("visibility") === "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED";
-    if (isOpen) {
-      // Force re-open: collapse, then expand
+    const panel = findTranscriptPanel();
+    if (panel && isPanelExpanded(panel)) {
+      // Already open; force re-open to refresh content.
       btn.click();
-      setTimeout(() => btn.click(), 250);
+      await new Promise((r) => setTimeout(r, 300));
+      btn.click();
     } else {
       btn.click();
     }
-    return true;
+    // Verify panel transitions to EXPANDED within 2s.
+    const start = Date.now();
+    while (Date.now() - start < 2000) {
+      const p = findTranscriptPanel();
+      if (p && isPanelExpanded(p)) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  }
+
+  async function tryAlternateOpeners() {
+    // Strategy 2: more-actions menu (...) on the watch page → "Show transcript".
+    const moreBtn = document.querySelector(
+      "ytd-watch-metadata #actions ytd-menu-renderer yt-button-shape button, " +
+        "ytd-watch-metadata #actions ytd-menu-renderer button",
+    );
+    if (moreBtn) {
+      moreBtn.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const items = document.querySelectorAll(
+        "tp-yt-paper-listbox ytd-menu-service-item-renderer, " +
+          "ytd-menu-service-item-renderer, " +
+          "ytd-menu-navigation-item-renderer",
+      );
+      const item = Array.from(items).find((el) => {
+        const txt = (el.innerText || "").toLowerCase();
+        return /trans/.test(txt);
+      });
+      if (item) {
+        item.click();
+        await new Promise((r) => setTimeout(r, 600));
+        const p = findTranscriptPanel();
+        if (p && isPanelExpanded(p)) return true;
+      }
+    }
+    return false;
   }
 
   function pollDomForSegments(timeoutMs) {
@@ -253,15 +369,17 @@
       DIAG.log("trigger ariaLabel:", trigger?.getAttribute("aria-label"));
       DIAG.log("trigger parent tag:", trigger?.parentElement?.tagName);
 
-      const clicked = clickToOpenPanel();
-      DIAG.log("clicked:", clicked);
-      if (!clicked) {
-        reply({
-          error:
-            "Could not find a transcript trigger. Make sure the video has captions and the description is expanded.",
-        });
-        return;
+      let opened = await clickToOpenPanelAndVerify();
+      DIAG.log("opened (primary):", opened);
+      if (!opened) {
+        opened = await tryAlternateOpeners();
+        DIAG.log("opened (alternate):", opened);
       }
+      // Note: in some new YouTube UI variants the panel never visually
+      // expands even though the underlying fetch fires. We do NOT bail
+      // on !opened — Path A (fetch interception) is the primary capture
+      // path and runs in parallel. We only bail if BOTH paths produce
+      // nothing within 8 seconds, handled by the existing `if (!result)`.
 
       // Snapshot DOM evolution at fixed offsets after click.
       const snapAt = async (ms, prevMs) => {
@@ -300,10 +418,8 @@
     if (result.source === "dom") {
       segments = result.segments;
     } else {
-      const initialSegments =
-        result.json?.actions?.[0]?.updateEngagementPanelAction?.content
-          ?.transcriptRenderer?.content?.transcriptSearchPanelRenderer?.body
-          ?.transcriptSegmentListRenderer?.initialSegments;
+      // Path A: result.segments is the raw initialSegments array (transcriptSegmentRenderer wrappers).
+      const initialSegments = result.segments;
       if (!initialSegments?.length) {
         reply({ error: "Transcript came back empty." });
         return;

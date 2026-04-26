@@ -16,49 +16,6 @@
   window.__whatascrapInstalled = true;
   console.log("[whatascrap page-world] installed");
 
-  // 2026-04 capture-bug instrumentation. Removed in Task 5.
-  const DIAG = (() => {
-    const log = (...args) => {
-      const printable = args.map((a) =>
-        a !== null && typeof a === "object" ? JSON.stringify(a) : a,
-      );
-      console.log("[whatascrap diag]", ...printable);
-    };
-    const snapshotPanels = () => {
-      const panels = document.querySelectorAll("[target-id]");
-      return Array.from(panels).map((p) => ({
-        targetId: p.getAttribute("target-id"),
-        visibility: p.getAttribute("visibility"),
-        innerTextLen: (p.innerText || "").length,
-        firstChildTags: Array.from(p.querySelectorAll(":scope *"))
-          .slice(0, 12)
-          .map((e) => e.tagName.toLowerCase()),
-      }));
-    };
-    const snapshotSegs = () => {
-      const candidates = [
-        "ytd-transcript-segment-renderer",
-        "ytd-transcript-segment-list-renderer",
-        "ytd-transcript-body-renderer",
-        "ytd-transcript-renderer",
-        "ytd-transcript-search-panel-renderer",
-        '[class*="transcript-segment"]',
-        '[class*="segment-text"]',
-        "[data-start-ms]",
-      ];
-      const out = {};
-      for (const sel of candidates) {
-        try {
-          out[sel] = document.querySelectorAll(sel).length;
-        } catch {
-          out[sel] = "selector-error";
-        }
-      }
-      return out;
-    };
-    return { log, snapshotPanels, snapshotSegs };
-  })();
-
   // ---------- Multi-name lookup tables (2026-04 hardening) ----------
   // YouTube renames internal element ids and tag names periodically.
   // Each table lists candidates ordered legacy → newest. Multi-name
@@ -160,30 +117,17 @@
       TRANSCRIPT_ENDPOINT_PATTERNS.some((p) => url.includes(p)) &&
       pendingFetchResolve
     ) {
-      DIAG.log("MATCHED FETCH URL:", url);
       res
         .clone()
         .json()
         .then((j) => {
           const segs = findAllSegments(j);
-          DIAG.log("MATCHED FETCH walker result count:", segs?.length ?? null);
-          DIAG.log(
-            "MATCHED FETCH body top-level keys:",
-            j && typeof j === "object" ? Object.keys(j) : typeof j,
-          );
-          // Truncated body so the paste back is bounded.
-          DIAG.log(
-            "MATCHED FETCH body slice (first 4000 chars):",
-            JSON.stringify(j).slice(0, 4000),
-          );
           if (segs && pendingFetchResolve) {
             pendingFetchResolve({ source: "fetch", segments: segs });
             pendingFetchResolve = null;
           }
         })
-        .catch((e) => {
-          DIAG.log("MATCHED FETCH parse error:", e?.message);
-        });
+        .catch(() => {});
     }
     return res;
   };
@@ -359,44 +303,24 @@
   window.addEventListener("message", async (event) => {
     if (event.source !== window) return;
     if (event.data?.type !== "WHATASCRAP_CAPTURE") return;
-    DIAG.log("=== CAPTURE START ===");
-    DIAG.log("locale:", document.documentElement.lang);
-    DIAG.log("url:", location.href);
-    DIAG.log("panels(t=0):", DIAG.snapshotPanels());
-    DIAG.log("segs(t=0):", DIAG.snapshotSegs());
 
     const reply = (payload) =>
       window.postMessage({ type: "WHATASCRAP_TRANSCRIPT", payload }, "*");
 
     const ipr = window.ytInitialPlayerResponse;
     if (!ipr?.videoDetails) {
-      DIAG.log("FAIL: no ytInitialPlayerResponse.videoDetails");
       reply({ error: "No video metadata found on this page." });
       return;
     }
-    DIAG.log("ipr.videoDetails.videoId:", ipr.videoDetails.videoId);
-    DIAG.log(
-      "url videoId match:",
-      new URL(location.href).searchParams.get("v") === ipr.videoDetails.videoId,
-    );
 
     const { videoId, title, author, lengthSeconds, thumbnail } = ipr.videoDetails;
 
     const immediateDom = scrapeDomSegments();
-    DIAG.log("immediateDom segments:", immediateDom?.length ?? 0);
     let result = immediateDom
       ? { source: "dom", segments: immediateDom }
       : null;
 
     if (!result) {
-      const fetchUrls = [];
-      const origFetchInner = window.fetch;
-      window.fetch = function (...args) {
-        const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
-        if (url) fetchUrls.push(url);
-        return origFetchInner.apply(this, args);
-      };
-
       const fetchPromise = new Promise((resolve) => {
         pendingFetchResolve = resolve;
         setTimeout(() => {
@@ -407,17 +331,9 @@
         }, 8000);
       });
 
-      const trigger = findTranscriptTrigger();
-      DIAG.log("trigger found:", !!trigger);
-      DIAG.log("trigger outerHTML:", trigger?.outerHTML?.slice(0, 300));
-      DIAG.log("trigger ariaLabel:", trigger?.getAttribute("aria-label"));
-      DIAG.log("trigger parent tag:", trigger?.parentElement?.tagName);
-
       let opened = await clickToOpenPanelAndVerify();
-      DIAG.log("opened (primary):", opened);
       if (!opened) {
         opened = await tryAlternateOpeners();
-        DIAG.log("opened (alternate):", opened);
       }
       // Note: in some new YouTube UI variants the panel never visually
       // expands even though the underlying fetch fires. We do NOT bail
@@ -425,30 +341,10 @@
       // path and runs in parallel. We only bail if BOTH paths produce
       // nothing within 8 seconds, handled by the existing `if (!result)`.
 
-      // Snapshot DOM evolution at fixed offsets after click.
-      const snapAt = async (ms, prevMs) => {
-        await new Promise((r) => setTimeout(r, ms - prevMs));
-        DIAG.log(`panels(t=${ms}ms):`, DIAG.snapshotPanels());
-        DIAG.log(`segs(t=${ms}ms):`, DIAG.snapshotSegs());
-      };
-      await snapAt(250, 0);
-      await snapAt(1000, 250);
-      await snapAt(3000, 1000);
-
       const domPromise = pollDomForSegments(8000);
       result = await Promise.race([fetchPromise, domPromise]);
       pendingFetchResolve = null;
-
-      // Final snapshot fires whenever the race resolves (3–8s window).
-      DIAG.log("panels(post-race):", DIAG.snapshotPanels());
-      DIAG.log("segs(post-race):", DIAG.snapshotSegs());
-      DIAG.log("fetch URLs hit during capture:", fetchUrls);
-      window.fetch = origFetchInner;
     }
-
-    DIAG.log("final result.source:", result?.source);
-    DIAG.log("final result.segments.length:", result?.segments?.length);
-    DIAG.log("=== CAPTURE END ===");
 
     if (!result) {
       reply({

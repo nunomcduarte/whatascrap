@@ -97,26 +97,57 @@
     "/youtubei/v1/get_panel", // 2026-04-26: new multiplexed endpoint
   ];
 
-  function findInitialSegments(obj) {
-    if (!obj || typeof obj !== "object") return null;
-    if (Array.isArray(obj)) {
-      for (const item of obj) {
-        const found = findInitialSegments(item);
-        if (found) return found;
+  // Walks an arbitrarily-shaped JSON response and collects normalized
+  // transcript segments. Handles two renderer shapes seen in 2026-04:
+  //   - Legacy `transcriptSegmentRenderer` (returned by /get_transcript)
+  //     with snippet.runs[]/simpleText + numeric startMs/endMs.
+  //   - Modern `transcriptSegmentViewModel` (returned by /get_panel for
+  //     PAmodern_transcript_view) with `simpleText` + string `timestamp`
+  //     like "0:05" — `tsToMs` parses the string back to ms.
+  // Returns null if no segments found, otherwise an array of
+  //   { startMs, endMs, text } objects.
+  function findAllSegments(obj) {
+    const segments = [];
+    const walk = (o) => {
+      if (!o || typeof o !== "object") return;
+      if (Array.isArray(o)) {
+        for (const item of o) walk(item);
+        return;
       }
-      return null;
-    }
-    if (
-      Array.isArray(obj.initialSegments) &&
-      obj.initialSegments.some((s) => s?.transcriptSegmentRenderer)
-    ) {
-      return obj.initialSegments;
-    }
-    for (const key of Object.keys(obj)) {
-      const found = findInitialSegments(obj[key]);
-      if (found) return found;
-    }
-    return null;
+      if (o.transcriptSegmentRenderer) {
+        const r = o.transcriptSegmentRenderer;
+        const text = (
+          r?.snippet?.runs?.map((x) => x.text).join("") ||
+          r?.snippet?.simpleText ||
+          ""
+        ).trim();
+        if (text) {
+          segments.push({
+            startMs: parseInt(r?.startMs ?? "0", 10) || 0,
+            endMs: parseInt(r?.endMs ?? "0", 10) || 0,
+            text,
+          });
+        }
+        return; // don't descend into renderer internals
+      }
+      if (o.transcriptSegmentViewModel) {
+        const r = o.transcriptSegmentViewModel;
+        const text = (r?.simpleText || "").trim();
+        if (text) {
+          segments.push({
+            startMs: tsToMs(r?.timestamp || ""),
+            endMs: 0,
+            text,
+          });
+        }
+        return;
+      }
+      for (const key of Object.keys(o)) {
+        walk(o[key]);
+      }
+    };
+    walk(obj);
+    return segments.length ? segments : null;
   }
 
   let pendingFetchResolve = null;
@@ -134,7 +165,7 @@
         .clone()
         .json()
         .then((j) => {
-          const segs = findInitialSegments(j);
+          const segs = findAllSegments(j);
           DIAG.log("MATCHED FETCH walker result count:", segs?.length ?? null);
           DIAG.log(
             "MATCHED FETCH body top-level keys:",
@@ -427,32 +458,10 @@
       return;
     }
 
-    let segments = [];
-    if (result.source === "dom") {
-      segments = result.segments;
-    } else {
-      // Path A: result.segments is the raw initialSegments array (transcriptSegmentRenderer wrappers).
-      const initialSegments = result.segments;
-      if (!initialSegments?.length) {
-        reply({ error: "Transcript came back empty." });
-        return;
-      }
-      segments = initialSegments
-        .map((s) => {
-          const r = s.transcriptSegmentRenderer;
-          return {
-            startMs: parseInt(r?.startMs ?? "0", 10) || 0,
-            endMs: parseInt(r?.endMs ?? "0", 10) || 0,
-            text:
-              r?.snippet?.runs?.map((x) => x.text).join("") ||
-              r?.snippet?.simpleText ||
-              "",
-          };
-        })
-        .filter((s) => s.text);
-    }
-
-    if (!segments.length) {
+    // Both Path A (fetch — normalized by findAllSegments) and Path B (DOM
+    // — normalized by scrapeDomSegments) produce { startMs, endMs, text }.
+    const segments = result.segments;
+    if (!segments?.length) {
       reply({ error: "Transcript came back empty." });
       return;
     }
